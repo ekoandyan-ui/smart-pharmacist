@@ -1,0 +1,150 @@
+const express = require("express");
+const { DatabaseSync } = require("node:sqlite");
+const path = require("path");
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const db = new DatabaseSync(path.join(__dirname, "smart-pharmacist.db"));
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS resep (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kode TEXT UNIQUE, nama TEXT, no_hp TEXT, alamat TEXT, obat TEXT,
+  metode TEXT, status TEXT DEFAULT 'Diterima', otp TEXT,
+  dibuat TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS chat (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, resep_id INTEGER,
+  pengirim TEXT, pesan TEXT, waktu TEXT DEFAULT CURRENT_TIMESTAMP
+);`);
+
+const ALUR = [
+  "Diterima",
+  "Ditelaah",
+  "Disiapkan",
+  "Dikemas",
+  "Diantar",
+  "Selesai",
+];
+const chatOf = (id) =>
+  db
+    .prepare(
+      "SELECT pengirim,pesan,waktu FROM chat WHERE resep_id=? ORDER BY id",
+    )
+    .all(id);
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
+
+// Pasien: ajukan resep
+app.post("/api/resep", (req, res) => {
+  const { nama, no_hp, alamat, obat, metode } = req.body;
+  if (!nama || !no_hp || !obat)
+    return res
+      .status(400)
+      .json({ error: "Nama, No. HP, dan obat wajib diisi" });
+  if (metode === "antar" && !alamat)
+    return res.status(400).json({ error: "Alamat wajib untuk pengantaran" });
+  const n = db.prepare("SELECT COALESCE(MAX(id),0)+1 AS n FROM resep").get().n;
+  const kode = "SP-" + String(n).padStart(4, "0");
+  db.prepare(
+    "INSERT INTO resep (kode,nama,no_hp,alamat,obat,metode) VALUES (?,?,?,?,?,?)",
+  ).run(
+    kode,
+    nama,
+    no_hp,
+    alamat || "",
+    obat,
+    metode === "ambil" ? "ambil" : "antar",
+  );
+  res.json({ kode });
+});
+
+// Pasien: lacak status (OTP hanya tampil saat obat diantar)
+app.get("/api/track/:kode", (req, res) => {
+  const r = db
+    .prepare("SELECT * FROM resep WHERE kode=?")
+    .get(req.params.kode.toUpperCase());
+  if (!r) return res.status(404).json({ error: "Kode tidak ditemukan" });
+  res.json({
+    kode: r.kode,
+    nama: r.nama,
+    obat: r.obat,
+    metode: r.metode,
+    status: r.status,
+    otp: r.status === "Diantar" ? r.otp : null,
+    chat: chatOf(r.id),
+    alur: ALUR,
+  });
+});
+
+// Apoteker & Kurir: daftar resep
+app.get("/api/resep", (req, res) => {
+  const rows = db
+    .prepare(
+      "SELECT id,kode,nama,no_hp,alamat,obat,metode,status,dibuat FROM resep ORDER BY id DESC",
+    )
+    .all();
+  rows.forEach((r) => (r.chat = chatOf(r.id)));
+  res.json({ alur: ALUR, data: rows });
+});
+
+// Apoteker: ubah status
+app.patch("/api/resep/:id/status", (req, res) => {
+  const { status } = req.body;
+  if (!ALUR.includes(status))
+    return res.status(400).json({ error: "Status tidak valid" });
+  const otp =
+    status === "Diantar"
+      ? String(Math.floor(1000 + Math.random() * 9000))
+      : null;
+  db.prepare("UPDATE resep SET status=?, otp=COALESCE(?,otp) WHERE id=?").run(
+    status,
+    otp,
+    req.params.id,
+  );
+  res.json({ ok: true });
+});
+
+// Chat pasien <-> apoteker
+app.post("/api/resep/:id/chat", (req, res) => {
+  const { pengirim, pesan } = req.body;
+  if (!pesan || !["Pasien", "Apoteker"].includes(pengirim))
+    return res.status(400).json({ error: "Pesan tidak valid" });
+  db.prepare("INSERT INTO chat (resep_id,pengirim,pesan) VALUES (?,?,?)").run(
+    req.params.id,
+    pengirim,
+    pesan,
+  );
+  res.json({ ok: true });
+});
+
+// Chat dari sisi pasien memakai kode resep
+app.post("/api/track/:kode/chat", (req, res) => {
+  const r = db
+    .prepare("SELECT id FROM resep WHERE kode=?")
+    .get(req.params.kode.toUpperCase());
+  if (!r || !req.body.pesan)
+    return res.status(400).json({ error: "Gagal mengirim pesan" });
+  db.prepare("INSERT INTO chat (resep_id,pengirim,pesan) VALUES (?,?,?)").run(
+    r.id,
+    "Pasien",
+    req.body.pesan,
+  );
+  res.json({ ok: true });
+});
+
+// Kurir: serah terima dengan OTP
+app.post("/api/resep/:id/serah", (req, res) => {
+  const r = db.prepare("SELECT * FROM resep WHERE id=?").get(req.params.id);
+  if (!r || r.status !== "Diantar")
+    return res.status(400).json({ error: "Resep tidak dalam status diantar" });
+  if (String(req.body.otp) !== r.otp)
+    return res.status(400).json({ error: "OTP salah" });
+  db.prepare("UPDATE resep SET status='Selesai' WHERE id=?").run(r.id);
+  res.json({ ok: true });
+});
+
+app.listen(PORT, () =>
+  console.log(`SMART PHARMACIST berjalan di http://localhost:${PORT}`),
+);
