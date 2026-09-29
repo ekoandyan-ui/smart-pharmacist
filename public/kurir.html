@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Kurir | SMART PHARMACIST</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>SMART PHARMACIST · KURIR</h1>
+      <small>Sistem Manajemen Antar Obat Terintegrasi Tele-Pharmacist</small>
+    </header>
+
+    <main>
+      <div id="panel"></div>
+    </main>
+
+    <script src="app.js"></script>
+    <script>
+      setRole("kurir");
+
+      async function muat() {
+        if (!getToken()) {
+          renderAuth("kurir");
+          return;
+        }
+
+        try {
+          const { data } = await api("/api/resep");
+          $("#panel").innerHTML = `
+            <div class="card login-meta">
+              <h2>Panel Kurir</h2>
+              <button class="p secondary" onclick="logoutRole('kurir')">Logout</button>
+            </div>
+          ` + (data.filter((r) => r.status === "Diantar").map((r) => `
+            <div class="card">
+              <b>${esc(r.kode)}</b> · ${esc(r.nama)} · ${esc(r.no_hp)
+              }<p>${esc(r.alamat)}</p>
+              <div class="row">
+                <input id="o${r.id}" placeholder="OTP dari pasien" inputmode="numeric" />
+                <button class="p" onclick="serah(${r.id})">Serah terima</button>
+              </div>
+            </div>
+          `).join("") || '<p class="m">Tidak ada pengantaran aktif.</p>');
+        } catch (e) {
+          if (!getToken()) {
+            renderAuth("kurir");
+            return;
+          }
+          $("#panel").innerHTML = `<div class="card"><p class="m">${esc(e.message)}</p></div>`;
+        }
+      }
+
+      async function serah(id) {
+        try {
+          await api(`/api/resep/${id}/serah`, "POST", { otp: $("#o" + id).value });
+          muat();
+        } catch (e) {
+          alert(e.message);
+        }
+      }
+
+      setInterval(() => {
+        if (!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) muat();
+      }, 6000);
+      muat();
+    </script>
+  </body>
+</html>

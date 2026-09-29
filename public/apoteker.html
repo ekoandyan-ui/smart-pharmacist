@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Apoteker | SMART PHARMACIST</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>SMART PHARMACIST · APOTEKER</h1>
+      <small>Sistem Manajemen Antar Obat Terintegrasi Tele-Pharmacist</small>
+    </header>
+
+    <main>
+      <div id="panel"></div>
+    </main>
+
+    <script src="app.js"></script>
+    <script>
+      setRole("apoteker");
+
+      async function muat() {
+        if (!getToken()) {
+          renderAuth("apoteker");
+          return;
+        }
+
+        try {
+          const { alur, data } = await api("/api/resep");
+          $("#panel").innerHTML = `
+            <div class="card login-meta">
+              <h2>Panel Apoteker</h2>
+              <button class="p secondary" onclick="logoutRole('apoteker')">Logout</button>
+            </div>
+          ` + (data.map((r) => `
+            <div class="card">
+              <b>${esc(r.kode)}</b> · ${esc(r.nama)} · ${esc(r.no_hp)} · <span class="m">${r.metode === "antar" ? "Antar" : "Ambil sendiri"}</span>
+              <p>${esc(r.obat)}</p>
+              <select onchange="ubah(${r.id},this.value)">${alur.map((s) => `<option ${s === r.status ? "selected" : ""}>${s}</option>`).join("")}</select>
+              <div class="chat">${chatHtml(r.chat)}</div>
+              <div class="row">
+                <input id="c${r.id}" placeholder="Balas / edukasi pasien..." />
+                <button class="p" onclick="balas(${r.id})">Kirim</button>
+              </div>
+            </div>
+          `).join("") || '<p class="m">Belum ada resep.</p>');
+        } catch (e) {
+          if (!getToken()) {
+            renderAuth("apoteker");
+            return;
+          }
+          $("#panel").innerHTML = `<div class="card"><p class="m">${esc(e.message)}</p></div>`;
+        }
+      }
+
+      async function ubah(id, s) {
+        await api(`/api/resep/${id}/status`, "PATCH", { status: s });
+        muat();
+      }
+
+      async function balas(id) {
+        const v = $("#c" + id).value.trim();
+        if (!v) return;
+        await api(`/api/resep/${id}/chat`, "POST", { pengirim: "Apoteker", pesan: v });
+        muat();
+      }
+
+      setInterval(() => {
+        if (!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) muat();
+      }, 6000);
+      muat();
+    </script>
+  </body>
+</html>

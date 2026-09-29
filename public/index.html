@@ -1,113 +1,217 @@
-<!DOCTYPE html>
+﻿<!doctype html>
 <html lang="id">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SMART PHARMACIST</title>
-<style>
-:root{--g:#0f766e;--bg:#f4f7f6;--c:#fff;--t:#1f2937;--m:#6b7280;--b:#d9e2e0}
-@media(prefers-color-scheme:dark){:root{--bg:#111a19;--c:#1b2726;--t:#e5e7eb;--m:#9ca3af;--b:#2c3b39}}
-*{box-sizing:border-box}
-body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--t)}
-header{background:var(--g);color:#fff;padding:14px 20px}
-header h1{margin:0;font-size:18px}header small{opacity:.85}
-nav{display:flex;gap:6px;padding:10px 20px}
-nav button{flex:1;padding:10px;border:1px solid var(--b);background:var(--c);color:var(--t);border-radius:8px;cursor:pointer;font-weight:600}
-nav button.on{background:var(--g);color:#fff;border-color:var(--g)}
-main{max-width:760px;margin:0 auto;padding:0 20px 40px}
-.card{background:var(--c);border:1px solid var(--b);border-radius:10px;padding:14px;margin-top:12px}
-h2{margin:0 0 10px;font-size:16px}
-input,select,textarea{width:100%;padding:9px;margin:4px 0 10px;border:1px solid var(--b);border-radius:6px;background:var(--bg);color:var(--t);font:inherit}
-button.p{background:var(--g);color:#fff;border:0;padding:9px 16px;border-radius:6px;cursor:pointer;font-weight:600}
-.steps{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
-.st{padding:4px 10px;border-radius:99px;border:1px solid var(--b);font-size:12px;color:var(--m)}
-.st.done{background:var(--g);color:#fff;border-color:var(--g)}
-.chat{max-height:160px;overflow:auto;margin:8px 0;font-size:14px}
-.chat div{margin:3px 0}.m{color:var(--m);font-size:13px}
-.otp{font-size:22px;letter-spacing:4px;font-weight:700;color:var(--g)}
-.row{display:flex;gap:6px}.row input{margin:0}
-</style>
-</head>
-<body>
-<header><h1>SMART PHARMACIST</h1><small>Sistem Manajemen Antar Obat Terintegrasi Tele-Pharmacist</small></header>
-<nav>
-  <button data-t="pasien" class="on">Pasien</button>
-  <button data-t="apoteker">Apoteker</button>
-  <button data-t="kurir">Kurir</button>
-</nav>
-<main>
-<section id="pasien">
-  <div class="card"><h2>Ajukan Layanan Obat</h2>
-    <label>Nama</label><input id="nama">
-    <label>No. HP</label><input id="hp" type="tel">
-    <label>Obat / resep</label><textarea id="obat" rows="3" placeholder="Contoh: Amlodipin 5 mg x 30, Metformin 500 mg x 60"></textarea>
-    <label>Metode</label>
-    <select id="metode"><option value="antar">Diantar ke rumah</option><option value="ambil">Ambil sendiri</option></select>
-    <label>Alamat pengantaran</label><textarea id="alamat" rows="2"></textarea>
-    <button class="p" onclick="ajukan()">Kirim</button>
-    <p id="info" class="m"></p>
-  </div>
-  <div class="card"><h2>Lacak Obat &amp; Konsultasi Apoteker</h2>
-    <div class="row"><input id="kode" placeholder="Kode, mis. SP-0001"><button class="p" onclick="lacak()">Lacak</button></div>
-    <div id="hasil"></div>
-  </div>
-</section>
-<section id="apoteker" hidden><div id="listA"></div></section>
-<section id="kurir" hidden><div id="listK"></div></section>
-</main>
-<script>
-const $=s=>document.querySelector(s);
-const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-async function api(u,m,b){
-  const r=await fetch(u,m?{method:m,headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:undefined);
-  const d=await r.json(); if(!r.ok) throw new Error(d.error||'Gagal'); return d;
-}
-const chatHtml=c=>c.map(x=>`<div><b>${esc(x.pengirim)}:</b> ${esc(x.pesan)}</div>`).join('')||'<span class="m">Belum ada pesan</span>';
-let tab='pasien', kodeAktif='';
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pasien | SMART PHARMACIST</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>SMART PHARMACIST</h1>
+      <small>Sistem Manajemen Antar Obat Terintegrasi Tele-Pharmacist</small>
+      <div class="auth" id="authBox"></div>
+    </header>
 
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
-  tab=b.dataset.t;
-  document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));
-  ['pasien','apoteker','kurir'].forEach(t=>$('#'+t).hidden=t!==tab);
-  muat();
-});
+    <main>
+      <div class="menu" id="menu">
+        <button class="menu-box" id="layananBox" onclick="buka('layanan')" hidden>
+          <span class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z" />
+              <path d="m8.5 8.5 7 7" />
+            </svg>
+          </span>
+          <b>Layanan Obat</b>
+          <small>Ajukan resep / obat baru</small>
+        </button>
 
-async function ajukan(){
-  try{
-    const d=await api('/api/resep','POST',{nama:$('#nama').value,no_hp:$('#hp').value,obat:$('#obat').value,metode:$('#metode').value,alamat:$('#alamat').value});
-    $('#info').textContent='Berhasil! Simpan kode Anda: '+d.kode; $('#kode').value=d.kode; lacak();
-  }catch(e){$('#info').textContent=e.message}
-}
-async function lacak(){
-  kodeAktif=$('#kode').value.trim(); if(!kodeAktif) return;
-  try{
-    const d=await api('/api/track/'+encodeURIComponent(kodeAktif)), i=d.alur.indexOf(d.status);
-    $('#hasil').innerHTML=`<p><b>${esc(d.kode)}</b> · ${esc(d.nama)}<br><span class="m">${esc(d.obat)}</span></p>
-      <div class="steps">${d.alur.map((s,k)=>`<span class="st ${k<=i?'done':''}">${s}</span>`).join('')}</div>
-      ${d.otp?`<p>Kode serah terima (berikan ke kurir): <span class="otp">${d.otp}</span></p>`:''}
-      <div class="chat">${chatHtml(d.chat)}</div>
-      <div class="row"><input id="pc" placeholder="Tanya apoteker..."><button class="p" onclick="kirimP()">Kirim</button></div>`;
-  }catch(e){$('#hasil').innerHTML=`<p class="m">${esc(e.message)}</p>`}
-}
-async function kirimP(){const v=$('#pc').value.trim(); if(!v) return; await api('/api/track/'+kodeAktif+'/chat','POST',{pesan:v}); lacak()}
+        <button class="menu-box" onclick="buka('lacak')">
+          <span class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+          </span>
+          <b>Lacak Obat</b>
+          <small>Cek status &amp; konsultasi</small>
+        </button>
+      </div>
 
-async function muat(){
-  if(tab==='pasien'){ if(kodeAktif&&document.activeElement.id!=='pc') lacak(); return; }
-  const {alur,data}=await api('/api/resep');
-  if(tab==='apoteker') $('#listA').innerHTML=data.map(r=>`<div class="card">
-    <b>${esc(r.kode)}</b> · ${esc(r.nama)} · ${esc(r.no_hp)} · <span class="m">${r.metode==='antar'?'Antar':'Ambil sendiri'}</span>
-    <p>${esc(r.obat)}</p>
-    <select onchange="ubah(${r.id},this.value)">${alur.map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('')}</select>
-    <div class="chat">${chatHtml(r.chat)}</div>
-    <div class="row"><input id="c${r.id}" placeholder="Balas / edukasi pasien..."><button class="p" onclick="balas(${r.id})">Kirim</button></div></div>`).join('')||'<p class="m">Belum ada resep.</p>';
-  if(tab==='kurir') $('#listK').innerHTML=data.filter(r=>r.status==='Diantar').map(r=>`<div class="card">
-    <b>${esc(r.kode)}</b> · ${esc(r.nama)} · ${esc(r.no_hp)}<p>${esc(r.alamat)}</p>
-    <div class="row"><input id="o${r.id}" placeholder="OTP dari pasien" inputmode="numeric"><button class="p" onclick="serah(${r.id})">Serah terima</button></div></div>`).join('')||'<p class="m">Tidak ada pengantaran aktif.</p>';
-}
-async function ubah(id,s){await api(`/api/resep/${id}/status`,'PATCH',{status:s}); muat()}
-async function balas(id){const v=$('#c'+id).value.trim(); if(!v) return; await api(`/api/resep/${id}/chat`,'POST',{pengirim:'Apoteker',pesan:v}); muat()}
-async function serah(id){try{await api(`/api/resep/${id}/serah`,'POST',{otp:$('#o'+id).value}); muat()}catch(e){alert(e.message)}}
-setInterval(()=>{if(!/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) muat()},6000);
-</script>
-</body>
+      <section id="layanan" hidden>
+        <button class="back" onclick="kembali()">&larr; Kembali</button>
+        <div class="card">
+          <h2>Ajukan Layanan Obat</h2>
+          <label>Nama</label>
+          <input id="nama" />
+          <label>No. HP</label>
+          <input id="hp" type="tel" />
+          <label>Obat / resep</label>
+          <textarea id="obat" rows="3" placeholder="Contoh: Amlodipin 5 mg x 30, Metformin 500 mg x 60"></textarea>
+          <label>Metode</label>
+          <select id="metode">
+            <option value="antar">Diantar ke rumah</option>
+            <option value="ambil">Ambil sendiri</option>
+          </select>
+          <label>Alamat pengantaran</label>
+          <textarea id="alamat" rows="2"></textarea>
+          <button class="p" onclick="ajukan()">Kirim</button>
+          <p id="info" class="m"></p>
+        </div>
+      </section>
+
+      <section id="lacak" hidden>
+        <button class="back" onclick="kembali()">&larr; Kembali</button>
+        <div class="card">
+          <h2>Lacak Obat &amp; Konsultasi Apoteker</h2>
+          <div class="row">
+            <input id="kode" placeholder="Kode, mis. SP-0001" />
+            <button class="p" onclick="lacak()">Lacak</button>
+          </div>
+          <p id="sukses" class="m"></p>
+          <div id="hasil"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+    <script>
+      const state = { kodeAktif: "" };
+      const HP_KEY = "sp_user_pasien";
+      let authMode = "login";
+
+      const noHp = () => localStorage.getItem(HP_KEY) || "";
+
+      function renderAuthPasien() {
+        const box = $("#authBox");
+
+        if (getToken("pasien")) {
+          box.innerHTML = `
+            <span class="auth-info">Login sebagai <b>${esc(noHp())}</b></span>
+            <button class="p" onclick="logoutPasien()">Logout</button>
+          `;
+          $("#layananBox").hidden = false;
+          $("#hp").value = noHp();
+          return;
+        }
+
+        $("#layananBox").hidden = true;
+        const daftar = authMode === "daftar";
+        box.innerHTML = `
+          <input id="pasien-hp" type="tel" inputmode="numeric" placeholder="No. HP" />
+          <input id="pasien-pass" type="password" placeholder="Password" />
+          ${daftar ? '<input id="pasien-konfirmasi" type="password" placeholder="Ulangi password" />' : ""}
+          <button class="p" onclick="authPasien()">${daftar ? "Daftar" : "Masuk"}</button>
+          <button class="p secondary" onclick="gantiMode()">${daftar ? "Sudah punya akun" : "Daftar"}</button>
+          <span id="pasien-msg" class="auth-msg"></span>
+        `;
+      }
+
+      function gantiMode() {
+        authMode = authMode === "login" ? "daftar" : "login";
+        renderAuthPasien();
+      }
+
+      async function authPasien() {
+        const hp = $("#pasien-hp").value.trim();
+        const sandi = $("#pasien-pass").value;
+        const konfirmasi = $("#pasien-konfirmasi")?.value;
+        const msg = $("#pasien-msg");
+
+        try {
+          if (authMode === "daftar") {
+            if (sandi !== konfirmasi) throw new Error("Password tidak sama");
+            await api("/api/pasien/daftar", "POST", { no_hp: hp, password: sandi }, false);
+            authMode = "login";
+            localStorage.setItem(HP_KEY, hp);
+            writeToken("pasien", "");
+            renderAuthPasien();
+            msg.textContent = "Pendaftaran berhasil, silakan masuk.";
+            return;
+          }
+
+          const d = await api("/api/pasien/login", "POST", { no_hp: hp, password: sandi }, false);
+          writeToken("pasien", d.token);
+          localStorage.setItem(HP_KEY, d.no_hp);
+          renderAuthPasien();
+        } catch (e) {
+          msg.textContent = e.message;
+        }
+      }
+
+      async function logoutPasien() {
+        try {
+          await api("/api/auth/logout", "POST", {});
+        } catch (e) {
+          /* token sudah tidak berlaku, abaikan */
+        }
+        writeToken("pasien", "");
+        localStorage.removeItem(HP_KEY);
+        authMode = "login";
+        kembali();
+        renderAuthPasien();
+      }
+
+      function buka(target) {
+        $("#menu").hidden = true;
+        $("#layanan").hidden = target !== "layanan";
+        $("#lacak").hidden = target !== "lacak";
+      }
+
+      function kembali() {
+        $("#layanan").hidden = true;
+        $("#lacak").hidden = true;
+        $("#menu").hidden = false;
+      }
+
+      async function ajukan() {
+        try {
+          const d = await api("/api/resep", "POST", {
+            nama: $("#nama").value,
+            no_hp: $("#hp").value,
+            obat: $("#obat").value,
+            metode: $("#metode").value,
+            alamat: $("#alamat").value,
+          });
+          $("#kode").value = d.kode;
+          $("#sukses").textContent = "Pengajuan berhasil! Simpan kode Anda: " + d.kode;
+          buka("lacak");
+          lacak();
+        } catch (e) {
+          $("#info").textContent = e.message;
+        }
+      }
+
+      async function lacak() {
+        state.kodeAktif = $("#kode").value.trim();
+        if (!state.kodeAktif) return;
+
+        try {
+          const d = await api("/api/track/" + encodeURIComponent(state.kodeAktif));
+          const i = d.alur.indexOf(d.status);
+          $("#hasil").innerHTML = `
+            <p><b>${esc(d.kode)}</b> · ${esc(d.nama)}<br><span class="m">${esc(d.obat)}</span></p>
+            <div class="steps">${d.alur.map((s, k) => `<span class="st ${k <= i ? "done" : ""}">${s}</span>`).join("")}</div>
+            ${d.otp ? `<p>Kode serah terima (berikan ke kurir): <span class="otp">${d.otp}</span></p>` : ""}
+            <div class="chat">${chatHtml(d.chat)}</div>
+            <div class="row">
+              <input id="pc" placeholder="Tanya apoteker..." />
+              <button class="p" onclick="kirimP()">Kirim</button>
+            </div>
+          `;
+        } catch (e) {
+          $("#hasil").innerHTML = `<p class="m">${esc(e.message)}</p>`;
+        }
+      }
+
+      async function kirimP() {
+        const v = $("#pc").value.trim();
+        if (!v) return;
+        await api("/api/track/" + state.kodeAktif + "/chat", "POST", { pesan: v });
+        lacak();
+      }
+
+      renderAuthPasien();
+    </script>
+  </body>
 </html>
